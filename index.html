@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vantage Circle - Engagement Rush</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+            touch-action: none; /* Prevent zoom/scroll on mobile */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            height: 100%;
+            max-height: 800px;
+            background: linear-gradient(180deg, #e0f7fa 0%, #ffffff 100%);
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Overlays */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.9);
+            text-align: center;
+            z-index: 10;
+            padding: 20px;
+            box-sizing: border-box;
+            transition: opacity 0.3s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        h1 {
+            color: #fd5f00; /* Vantage Circle Orange-ish */
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 0px #fff;
+        }
+
+        h2 {
+            color: #2c3e50;
+            font-size: 1.5rem;
+            margin-top: 0;
+        }
+
+        p {
+            color: #555;
+            font-size: 1.1rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(90deg, #fd5f00, #ff9100);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(253, 95, 0, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(253, 95, 0, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        #score-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 15px;
+            border-radius: 20px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        #lives-hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 1.5rem;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .marketing-text {
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="score-hud">Score: 0</div>
+    <div id="lives-hud">❤️❤️❤️</div>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="screen">
+        <h1>Engagement Rush</h1>
+        <h2>Help Vanco Boost Culture!</h2>
+        <p>Catch the 🎁 Rewards and 💎 Perks.<br>Avoid the ☁️ Burnout clouds!</p>
+        <button class="btn" onclick="game.start()">Play Now</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="screen hidden">
+        <h1>Game Over!</h1>
+        <h2 id="final-score">Score: 0</h2>
+        <p>Great job managing employee engagement!</p>
+        <p>Discover how Vantage Circle can help you retain top talent in real life.</p>
+        <button class="btn" onclick="game.reset()">Play Again</button>
+        <div class="marketing-text">Powered by Vantage Circle</div>
+    </div>
+</div>
+
+<script>
+    // Game Configuration
+    const ASSETS = {
+        playerSrc: 'vanco_withou_background-removebg-preview.png', // The uploaded filename
+    };
+
+    const GAME_CONFIG = {
+        playerSpeed: 7,
+        gravity: 0.5,
+        spawnRate: 60, // Frames between spawns
+        difficultyMultiplier: 0.001
+    };
+
+    // Setup Canvas
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const scoreHud = document.getElementById('score-hud');
+    const livesHud = document.getElementById('lives-hud');
+    const finalScoreEl = document.getElementById('final-score');
+
+    // Resize handling
+    function resize() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Game State
+    const game = {
+        active: false,
+        score: 0,
+        lives: 3,
+        frameCount: 0,
+        items: [],
+        particles: [],
+        player: {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 80,
+            img: new Image(),
+            isLoaded: false
+        },
+        
+        init() {
+            // Load Player Image
+            this.player.img.src = ASSETS.playerSrc;
+            this.player.img.onload = () => {
+                this.player.isLoaded = true;
+            };
+            this.player.img.onerror = () => {
+                // Fallback if image not found
+                console.warn("Image not found, using fallback");
+            }
+
+            // Input Handling
+            this.keys = {};
+            window.addEventListener('keydown', (e) => this.keys[e.code] = true);
+            window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+
+            // Touch Handling
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const touchX = touch.clientX - rect.left;
+                this.player.x = touchX - this.player.width / 2;
+            }, { passive: false });
+            
+            // Mouse Handling (for desktop testing)
+            canvas.addEventListener('mousemove', (e) => {
+                if(!this.active) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                // Smooth follow logic or direct mapping
+                // Direct mapping for responsiveness:
+                this.player.x = mouseX - this.player.width / 2;
+            });
+
+            this.loop = this.loop.bind(this);
+            requestAnimationFrame(this.loop);
+        },
+
+        start() {
+            this.active = true;
+            this.score = 0;
+            this.lives = 3;
+            this.items = [];
+            this.particles = [];
+            this.frameCount = 0;
+            
+            // Center player
+            this.player.x = canvas.width / 2 - this.player.width / 2;
+            this.player.y = canvas.height - this.player.height - 20;
+
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            this.updateHud();
+        },
+
+        reset() {
+            this.start();
+        },
+
+        over() {
+            this.active = false;
+            gameOverScreen.classList.remove('hidden');
+            finalScoreEl.textContent = `Engagement Score: ${this.score}`;
+        },
+
+       spawnItem() {
+            const typeRate = Math.random();
+            let type = 'good';
+            let text = '';
+            let color = '#4CAF50';
+            let isEmoji = false;
+            
+            if (typeRate > 0.7) {
+                type = 'bad';
+                text = '💣'; // Bomb
+                color = '#f44336';
+                isEmoji = true;
+            } else {
+                type = 'good';
+                const goodItems = ['Recognition', 'Rewards', 'Engagement', 'Culture'];
+                text = goodItems[Math.floor(Math.random() * goodItems.length)];
+                const colors = ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800'];
+                color = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            const size = isEmoji ? 40 : 80;
+            const item = {
+                x: Math.random() * (canvas.width - size),
+                y: -50,
+                size: size,
+                speed: 3 + (this.score * 0.01), // Gets faster
+                type: type,
+                text: text,
+                color: color,
+                rotation: Math.random() * Math.PI
+            };
+            this.items.push(item);
+        },
+
+        createParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                this.particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        },
+
+        update() {
+            if (!this.active) return;
+            this.frameCount++;
+
+            // Player Movement (Keyboard)
+            if (this.keys['ArrowLeft']) this.player.x -= GAME_CONFIG.playerSpeed;
+            if (this.keys['ArrowRight']) this.player.x += GAME_CONFIG.playerSpeed;
+
+            // Boundaries
+            if (this.player.x < 0) this.player.x = 0;
+            if (this.player.x + this.player.width > canvas.width) this.player.x = canvas.width - this.player.width;
+
+            // Spawning
+            if (this.frameCount % GAME_CONFIG.spawnRate === 0) {
+                this.spawnItem();
+            }
+
+            // Items Logic
+            for (let i = this.items.length - 1; i >= 0; i--) {
+                let item = this.items[i];
+                item.y += item.speed;
+                item.rotation += 0.05;
+
+                // Collision Check
+                if (
+                    item.x < this.player.x + this.player.width - 20 &&
+                    item.x + item.size > this.player.x + 20 &&
+                    item.y < this.player.y + this.player.height - 10 &&
+                    item.y + item.size > this.player.y + 20
+                ) {
+                    // Hit
+                    if (item.type === 'good') {
+                        this.score += 100;
+                        this.createParticles(item.x, item.y, '#FFD700');
+                    } else {
+                        this.lives--;
+                        this.createParticles(item.x, item.y, '#555');
+                        // Screen shake effect
+                        canvas.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
+                        setTimeout(() => canvas.style.transform = 'none', 200);
+                        
+                        if(this.lives <= 0) this.over();
+                    }
+                    this.items.splice(i, 1);
+                    this.updateHud();
+                    continue;
+                }
+
+                // Remove if off screen
+                if (item.y > canvas.height) {
+                    this.items.splice(i, 1);
+                }
+            }
+
+            // Particles Logic
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                let p = this.particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) this.particles.splice(i, 1);
+            }
+        },
+
+        draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Particles
+            this.particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Draw Items
+            this.items.forEach(item => {
+                ctx.save();
+                ctx.translate(item.x + item.size/2, item.y + item.size/2);
+                ctx.rotate(item.rotation);
+                ctx.font = "30px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(item.text, 0, 0);
+                ctx.restore();
+            });
+
+            // Draw Player
+            if (this.player.isLoaded) {
+                ctx.drawImage(this.player.img, this.player.x, this.player.y, this.player.width, this.player.height);
+            } else {
+                // Fallback rectangle
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
+            }
+        },
+
+        loop() {
+            this.update();
+            this.draw();
+            requestAnimationFrame(this.loop);
+        },
+
+        updateHud() {
+            scoreHud.innerText = `Score: ${this.score}`;
+            let heartStr = '';
+            for(let i=0; i<this.lives; i++) heartStr += '❤️';
+            livesHud.innerText = heartStr;
+        }
+    };
+
+    // Initialize Game
+    game.init();
+
+</script>
+</body>
+</html>
